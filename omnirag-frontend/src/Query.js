@@ -1,12 +1,22 @@
 import { useState, useRef, useEffect } from "react";
 import { authFetch } from "./api";
 
-const STEPS = ["planner", "retrieval", "summarizer", "evaluator"];
+const STEP_PATHS = {
+  SIMPLE: ["coordinator", "planner", "retrieval", "summarizer", "evaluator"],
+  COMPLEX: ["coordinator", "decompose", "multi_hop", "synthesize"],
+  AMBIGUOUS: ["coordinator", "clarify"],
+};
+
 const STEP_LABELS = {
+  coordinator: "Coordinator",
   planner: "Planner",
   retrieval: "Retrieval",
   summarizer: "Summarizer",
   evaluator: "Evaluator",
+  decompose: "Decompose",
+  multi_hop: "Multi-Hop",
+  synthesize: "Synthesize",
+  clarify: "Clarify",
 };
 
 function Query() {
@@ -15,6 +25,7 @@ function Query() {
   const [running, setRunning] = useState(false);
   const [completedSteps, setCompletedSteps] = useState([]);
   const [currentStep, setCurrentStep] = useState(null);
+  const [questionType, setQuestionType] = useState(null);
   const pollRef = useRef(null);
   const bottomRef = useRef(null);
 
@@ -30,6 +41,7 @@ function Query() {
 
         setCompletedSteps(data.completed_steps || []);
         setCurrentStep(data.current_step);
+        setQuestionType(data.question_type);
 
         if (data.done) {
           clearInterval(pollRef.current);
@@ -73,6 +85,7 @@ function Query() {
     setQuestion("");
     setCompletedSteps([]);
     setCurrentStep(null);
+    setQuestionType(null);
     setRunning(true);
 
     try {
@@ -119,6 +132,10 @@ function Query() {
     if (currentStep === step) return "active";
     return "pending";
   };
+
+  // Before we know the question_type, show the default (coordinator-only) skeleton;
+  // once known, show that path's actual steps.
+  const activeSteps = questionType ? STEP_PATHS[questionType] : ["coordinator"];
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
@@ -175,20 +192,24 @@ function Query() {
         {running && (
           <div className="flex justify-start">
             <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 max-w-[80%] w-full">
+              {questionType && (
+                <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-2">
+                  {questionType} question detected
+                </p>
+              )}
               <div className="flex items-center justify-between">
-                {STEPS.map((step, i) => {
+                {activeSteps.map((step, i) => {
                   const status = getStepStatus(step);
                   return (
                     <div key={step} className="flex items-center flex-1">
                       <div className="flex flex-col items-center flex-1">
                         <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
-                            status === "done"
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 ${status === "done"
                               ? "bg-green-500 border-green-500 text-white"
                               : status === "active"
-                              ? "bg-blue-500 border-blue-500 text-white animate-pulse"
-                              : "bg-gray-100 border-gray-300 text-gray-400"
-                          }`}
+                                ? "bg-blue-500 border-blue-500 text-white animate-pulse"
+                                : "bg-gray-100 border-gray-300 text-gray-400"
+                            }`}
                         >
                           {status === "done" ? "✓" : i + 1}
                         </div>
@@ -196,11 +217,10 @@ function Query() {
                           {STEP_LABELS[step]}
                         </span>
                       </div>
-                      {i < STEPS.length - 1 && (
+                      {i < activeSteps.length - 1 && (
                         <div
-                          className={`h-0.5 flex-1 -mt-4 ${
-                            completedSteps.includes(step) ? "bg-green-400" : "bg-gray-200"
-                          }`}
+                          className={`h-0.5 flex-1 -mt-4 ${completedSteps.includes(step) ? "bg-green-400" : "bg-gray-200"
+                            }`}
                         />
                       )}
                     </div>

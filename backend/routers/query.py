@@ -26,6 +26,7 @@ def run_graph_task(task_id: str, question: str):
         "completed_steps": [],
         "done": False,
         "question": question,
+        "question_type": None,
         "search_query": None,
         "retrieved_docs": None,
         "answer": None,
@@ -41,6 +42,7 @@ def run_graph_task(task_id: str, question: str):
             state.update(node_update)
             task_status[task_id]["current_step"] = node_name
             task_status[task_id]["completed_steps"].append(node_name)
+            task_status[task_id]["question_type"] = state.get("question_type")
 
         task_status[task_id]["done"] = True
         task_status[task_id]["current_step"] = None
