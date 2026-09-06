@@ -4,8 +4,8 @@ load_dotenv()
 from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from retriever import retrieve
 from retriever import retrieve, get_document_text
+import re
 
 model = ChatGroq(model="openai/gpt-oss-20b")
 parser = StrOutputParser()
@@ -24,6 +24,81 @@ planner_chain = planner_prompt | model | parser
 def node_planner(state: dict) -> dict:
     search_query = planner_chain.invoke({"query": state["query"]}).strip()
     return {"search_query": search_query}
+
+coordinator_prompt = PromptTemplate.from_template(
+    "You are a coordinator agent that decides how to handle a user's question before any retrieval happens.\n\n"
+    "Classify the question into exactly one category:\n"
+    "- SIMPLE: a single, clear, answerable question about one topic\n"
+    "- COMPLEX: a question with multiple distinct parts or that requires comparing/combining information from different topics\n"
+    "- AMBIGUOUS: a question that is too vague, unclear, or missing context to answer meaningfully as-is\n\n"
+    "Question: {query}\n\n"
+    "Reply with ONLY one word: SIMPLE, COMPLEX, or AMBIGUOUS."
+)
+coordinator_chain = coordinator_prompt | model | parser
+
+def node_coordinator(state: dict) -> dict:
+    classification = coordinator_chain.invoke({"query": state["query"]}).strip().upper()
+    if classification not in ("SIMPLE", "COMPLEX", "AMBIGUOUS"):
+        classification = "SIMPLE"  # safe fallback
+    return {"question_type": classification}
+
+def route_after_coordinator(state: dict) -> str:
+    return state["question_type"].lower()
+
+decompose_prompt = PromptTemplate.from_template(
+    "Break the following complex question into 2-4 simpler, independent sub-questions "
+    "that together fully cover the original question. "
+    "Reply with ONLY a numbered list, one sub-question per line, nothing else.\n\n"
+    "Question: {query}\n\n"
+    "Sub-questions:"
+)
+decompose_chain = decompose_prompt | model | parser
+
+def node_decompose(state: dict) -> dict:
+    raw = decompose_chain.invoke({"query": state["query"]})
+    sub_questions = []
+    for line in raw.strip().split("\n"):
+        cleaned = re.sub(r"^\s*\d+[\.\)]\s*", "", line).strip()
+        if cleaned:
+            sub_questions.append(cleaned)
+    return {"sub_questions": sub_questions}
+
+def node_multi_hop(state: dict) -> dict:
+    sub_answers = []
+    for sub_q in state["sub_questions"]:
+        docs = retrieve(sub_q, k=2)
+        context = "\n\n".join(docs)
+        answer = summarizer_chain.invoke({"context": context, "question": sub_q})
+        sub_answers.append({"question": sub_q, "answer": answer})
+    return {"sub_answers": sub_answers}
+
+synthesis_prompt = PromptTemplate.from_template(
+    "You are given a complex original question and answers to its sub-questions. "
+    "Combine them into one clear, coherent final answer to the original question.\n\n"
+    "Original question: {query}\n\n"
+    "Sub-question answers:\n{sub_answers_formatted}\n\n"
+    "Final answer:"
+)
+synthesis_chain = synthesis_prompt | model | parser
+
+def node_synthesize(state: dict) -> dict:
+    formatted = "\n\n".join(
+        f"Q: {item['question']}\nA: {item['answer']}" for item in state["sub_answers"]
+    )
+    answer = synthesis_chain.invoke({"query": state["query"], "sub_answers_formatted": formatted})
+    return {"final_answer": answer, "evaluation": "N/A (multi-hop)", "attempts": 1}
+
+clarify_prompt = PromptTemplate.from_template(
+    "The following user question is too vague or ambiguous to answer directly from documents. "
+    "Write one brief, polite clarifying question asking the user for the specific detail needed.\n\n"
+    "Question: {query}\n\n"
+    "Clarifying question:"
+)
+clarify_chain = clarify_prompt | model | parser
+
+def node_clarify(state: dict) -> dict:
+    clarification = clarify_chain.invoke({"query": state["query"]})
+    return {"final_answer": clarification, "evaluation": "N/A (clarification)", "attempts": 0}
 
 summarizer_prompt = PromptTemplate.from_template(
     "Answer the question using only the context below. "
