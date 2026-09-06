@@ -9,7 +9,7 @@ from database import get_db
 from models import User, Document
 from schemas import DocumentResponse
 from dependencies import get_current_user
-from retriever import add_document_to_index
+from retriever import add_document_to_index, add_summary_to_index
 from nodes import summarize_document
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -40,6 +40,8 @@ def upload_document(
     # Index the document into the vector store so retrieval can find it
     try:
         add_document_to_index(file_path, file.filename)
+        summary = summarize_document(file.filename)
+        add_summary_to_index(file.filename, summary)
     except Exception as e:
         print(f"Warning: failed to index {file.filename}: {e}")
 
@@ -134,6 +136,7 @@ def delete_document(
     db.delete(document)
     db.commit()
     return {"detail": "Document deleted successfully"}
+
 @router.get("/{document_id}/summary")
 def get_document_summary(
     document_id: int,

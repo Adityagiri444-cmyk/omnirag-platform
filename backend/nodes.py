@@ -4,7 +4,7 @@ load_dotenv()
 from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from retriever import retrieve, get_document_text
+from retriever import retrieve, get_document_text, hierarchical_retrieve
 import re
 
 model = ChatGroq(model="openai/gpt-oss-20b")
@@ -66,7 +66,7 @@ def node_decompose(state: dict) -> dict:
 def node_multi_hop(state: dict) -> dict:
     sub_answers = []
     for sub_q in state["sub_questions"]:
-        docs = retrieve(sub_q, k=2)
+        docs = hierarchical_retrieve(sub_q, k_docs=2, k_chunks=2)
         context = "\n\n".join(docs)
         answer = summarizer_chain.invoke({"context": context, "question": sub_q})
         sub_answers.append({"question": sub_q, "answer": answer})
@@ -116,7 +116,7 @@ def node_summarizer(state: dict) -> dict:
 
 def node_retrieval(state: dict) -> dict:
     query_to_use = state.get("search_query", state["query"])
-    docs = retrieve(query_to_use, k=3)
+    docs = hierarchical_retrieve(query_to_use, k_docs=2, k_chunks=3)
     return {"retrieved_docs": docs}
 
 evaluator_prompt = PromptTemplate.from_template(
