@@ -4,26 +4,31 @@ load_dotenv()
 from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from retriever import retrieve, get_document_text, hierarchical_retrieve
+from retriever import retrieve, get_document_text, hierarchical_retrieve, get_documents_metadata
+from sandbox import run_sandboxed
 import re
 
 model = ChatGroq(model="openai/gpt-oss-20b")
 parser = StrOutputParser()
 
-# Merged Coordinator: classifies AND produces the type-specific output in one call.
-# This replaces what used to be 2 separate LLM calls (Coordinator + Planner/Decompose/Clarify).
 coordinator_prompt = PromptTemplate.from_template(
     "You are a coordinator agent for a document Q&A system. Given a user's question, do ALL of the following in one response:\n\n"
     "1. Classify the question into exactly one category:\n"
-    "   - SIMPLE: a single, clear, answerable question about one topic\n"
-    "   - COMPLEX: a question with multiple distinct parts or that requires comparing/combining information from different topics\n"
-    "   - AMBIGUOUS: a question that is too vague, unclear, or missing context to answer meaningfully as-is\n\n"
+    "   - SIMPLE: a single, clear, answerable question about the CONTENT of documents\n"
+    "   - COMPLEX: a question with multiple distinct parts, or comparing/combining information from different topics\n"
+    "   - AMBIGUOUS: a question too vague or unclear to answer meaningfully as-is\n"
+    "   - COMPUTE: a question asking for a CALCULATION or STATISTIC about the document collection itself "
+    "(e.g., how many documents, total/average word count, which document is longest/shortest) - NOT about document content\n\n"
     "2. Depending on the classification, also produce:\n"
     "   - If SIMPLE: the clearest, most specific search query for retrieval (one line)\n"
     "   - If COMPLEX: 2-4 independent sub-questions that together fully cover the original question (numbered list, one per line)\n"
-    "   - If AMBIGUOUS: one brief, polite clarifying question to ask the user (one line)\n\n"
+    "   - If AMBIGUOUS: one brief, polite clarifying question to ask the user (one line)\n"
+    "   - If COMPUTE: a short Python snippet that computes the answer using a pre-existing variable `data`, "
+    "which is a list of dicts, each with keys 'filename', 'word_count', 'char_count'. "
+    "The snippet MUST end with a print() statement showing the final answer in a clear sentence. "
+    "Only use built-in Python plus math/statistics/collections - no imports needed for simple counts/sums/averages.\n\n"
     "Respond in EXACTLY this format, nothing else:\n"
-    "TYPE: <SIMPLE|COMPLEX|AMBIGUOUS>\n"
+    "TYPE: <SIMPLE|COMPLEX|AMBIGUOUS|COMPUTE>\n"
     "OUTPUT:\n"
     "<the corresponding output>\n\n"
     "Question: {query}"
@@ -33,7 +38,7 @@ coordinator_chain = coordinator_prompt | model | parser
 def node_coordinator(state: dict) -> dict:
     raw = coordinator_chain.invoke({"query": state["query"]})
 
-    type_match = re.search(r"TYPE:\s*(SIMPLE|COMPLEX|AMBIGUOUS)", raw, re.IGNORECASE)
+    type_match = re.search(r"TYPE:\s*(SIMPLE|COMPLEX|AMBIGUOUS|COMPUTE)", raw, re.IGNORECASE)
     classification = type_match.group(1).upper() if type_match else "SIMPLE"
 
     output_match = re.search(r"OUTPUT:\s*(.*)", raw, re.DOTALL)
@@ -54,11 +59,26 @@ def node_coordinator(state: dict) -> dict:
         result["final_answer"] = output_text.split("\n")[0].strip()
         result["evaluation"] = "N/A (clarification)"
         result["attempts"] = 0
+    elif classification == "COMPUTE":
+        code = output_text
+        if code.startswith("```"):
+            code = re.sub(r"^```(?:python)?\n?", "", code)
+            code = re.sub(r"\n?```$", "", code)
+        result["compute_code"] = code.strip()
 
     return result
 
 def route_after_coordinator(state: dict) -> str:
     return state["question_type"].lower()
+
+def node_compute(state: dict) -> dict:
+    data = get_documents_metadata()
+    output = run_sandboxed(state["compute_code"], data)
+    return {
+        "final_answer": output,
+        "evaluation": "N/A (computed)",
+        "attempts": 1,
+    }
 
 def node_multi_hop(state: dict) -> dict:
     sub_answers = []
@@ -144,13 +164,9 @@ def summarize_document(filename: str) -> str:
     return summary_chain.invoke({"text": text})
 
 if __name__ == "__main__":
-    test_state = {"query": "What is RAG?", "attempts": 0}
+    test_state = {"query": "How many documents do I have and what's their average word count?", "attempts": 0}
     test_state.update(node_coordinator(test_state))
     print("Question type:", test_state["question_type"])
-    print("Search query:", test_state.get("search_query"))
-    test_state.update(node_retrieval(test_state))
-    test_state.update(node_summarizer(test_state))
-    test_state.update(node_evaluator(test_state))
+    print("Generated code:\n", test_state.get("compute_code"))
+    test_state.update(node_compute(test_state))
     print("\nFinal Answer:\n", test_state["final_answer"])
-    print("\nEvaluation:", test_state["evaluation"])
-    print("Route decision:", route_after_evaluator(test_state))

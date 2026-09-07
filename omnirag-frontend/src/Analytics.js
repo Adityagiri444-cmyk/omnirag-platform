@@ -33,6 +33,14 @@ function Analytics() {
 
     fetchStats();
     fetchUsage();
+
+    // Poll both every 5 seconds so the dashboard updates live without a manual refresh
+    const interval = setInterval(() => {
+      fetchStats();
+      fetchUsage();
+    }, 5000);
+
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

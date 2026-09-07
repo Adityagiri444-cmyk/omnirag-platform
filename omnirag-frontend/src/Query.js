@@ -5,6 +5,7 @@ const STEP_PATHS = {
   SIMPLE: ["coordinator", "planner", "retrieval", "summarizer", "evaluator"],
   COMPLEX: ["coordinator", "decompose", "multi_hop", "synthesize"],
   AMBIGUOUS: ["coordinator", "clarify"],
+  COMPUTE: ["coordinator", "compute"],
 };
 
 const STEP_LABELS = {
@@ -17,6 +18,7 @@ const STEP_LABELS = {
   multi_hop: "Multi-Hop",
   synthesize: "Synthesize",
   clarify: "Clarify",
+  compute: "Compute",
 };
 
 function Query() {
@@ -133,8 +135,6 @@ function Query() {
     return "pending";
   };
 
-  // Before we know the question_type, show the default (coordinator-only) skeleton;
-  // once known, show that path's actual steps.
   const activeSteps = questionType ? STEP_PATHS[questionType] : ["coordinator"];
 
   return (

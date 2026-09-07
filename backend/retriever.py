@@ -74,6 +74,23 @@ def list_all_indexed_documents() -> list[str]:
             sources.add(metadata["source"])
     return list(sources)
 
+def get_documents_metadata() -> list[dict]:
+    """
+    Return safe, non-sensitive metadata about every indexed document
+    (filename, word count, character count) - used as the only data
+    exposed to the sandboxed computation agent. No raw file access,
+    no file paths, nothing beyond these simple counts.
+    """
+    metadata = []
+    for filename in list_all_indexed_documents():
+        text = get_document_text(filename)
+        metadata.append({
+            "filename": filename,
+            "word_count": len(text.split()),
+            "char_count": len(text),
+        })
+    return metadata
+
 if __name__ == "__main__":
     test_query = "What is RAG?"
     chunks = retrieve(test_query)
