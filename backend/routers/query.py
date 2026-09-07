@@ -6,6 +6,7 @@ from models import User
 from dependencies import get_current_user
 from graph import graph
 from report_generator import generate_query_report
+from token_tracker import TokenUsageTracker
 
 router = APIRouter(prefix="/query", tags=["Query"])
 
@@ -20,6 +21,13 @@ class QueryResponse(BaseModel):
 # In-memory task status store (fine for single-user local dev, not production-scale)
 task_status: dict = {}
 
+# Running totals across all queries, for the Analytics dashboard
+usage_totals = {
+    "total_queries": 0,
+    "total_llm_calls": 0,
+    "total_tokens": 0,
+}
+
 def run_graph_task(task_id: str, question: str):
     task_status[task_id] = {
         "current_step": "starting",
@@ -33,10 +41,13 @@ def run_graph_task(task_id: str, question: str):
         "evaluation": None,
         "attempts": None,
         "error": None,
+        "token_usage": None,
     }
     state = {"query": question, "attempts": 0}
+    tracker = TokenUsageTracker()
+    config = {"callbacks": [tracker]}
     try:
-        for step_output in graph.stream(state):
+        for step_output in graph.stream(state, config=config):
             node_name = list(step_output.keys())[0]
             node_update = step_output[node_name]
             state.update(node_update)
@@ -44,6 +55,7 @@ def run_graph_task(task_id: str, question: str):
             task_status[task_id]["completed_steps"].append(node_name)
             task_status[task_id]["question_type"] = state.get("question_type")
 
+        usage = tracker.summary()
         task_status[task_id]["done"] = True
         task_status[task_id]["current_step"] = None
         task_status[task_id]["search_query"] = state.get("search_query")
@@ -51,6 +63,11 @@ def run_graph_task(task_id: str, question: str):
         task_status[task_id]["answer"] = state.get("final_answer")
         task_status[task_id]["evaluation"] = state.get("evaluation")
         task_status[task_id]["attempts"] = state.get("attempts")
+        task_status[task_id]["token_usage"] = usage
+
+        usage_totals["total_queries"] += 1
+        usage_totals["total_llm_calls"] += usage["llm_calls"]
+        usage_totals["total_tokens"] += usage["total_tokens"]
     except Exception as e:
         task_status[task_id]["done"] = True
         task_status[task_id]["error"] = str(e)
@@ -86,6 +103,19 @@ def get_query_status(
     if not status:
         raise HTTPException(status_code=404, detail="Task not found")
     return status
+
+@router.get("/usage/summary")
+def get_usage_summary(current_user: User = Depends(get_current_user)):
+    avg_tokens = (
+        usage_totals["total_tokens"] / usage_totals["total_queries"]
+        if usage_totals["total_queries"] > 0 else 0
+    )
+    return {
+        "total_queries": usage_totals["total_queries"],
+        "total_llm_calls": usage_totals["total_llm_calls"],
+        "total_tokens": usage_totals["total_tokens"],
+        "avg_tokens_per_query": round(avg_tokens, 1),
+    }
 
 @router.get("/report/{task_id}")
 def download_report(
