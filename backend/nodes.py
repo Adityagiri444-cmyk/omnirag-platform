@@ -10,58 +10,55 @@ import re
 model = ChatGroq(model="openai/gpt-oss-20b")
 parser = StrOutputParser()
 
-planner_prompt = PromptTemplate.from_template(
-    "You are a query planning agent for a document retrieval system. "
-    "Given a user's question, rewrite it into the clearest, most specific search query "
-    "that will retrieve the most relevant document passages. "
-    "If the question has multiple parts, focus on the core information need. "
-    "Reply with ONLY the rewritten search query, nothing else.\n\n"
-    "User question: {query}\n\n"
-    "Search query:"
-)
-planner_chain = planner_prompt | model | parser
-
-def node_planner(state: dict) -> dict:
-    search_query = planner_chain.invoke({"query": state["query"]}).strip()
-    return {"search_query": search_query}
-
+# Merged Coordinator: classifies AND produces the type-specific output in one call.
+# This replaces what used to be 2 separate LLM calls (Coordinator + Planner/Decompose/Clarify).
 coordinator_prompt = PromptTemplate.from_template(
-    "You are a coordinator agent that decides how to handle a user's question before any retrieval happens.\n\n"
-    "Classify the question into exactly one category:\n"
-    "- SIMPLE: a single, clear, answerable question about one topic\n"
-    "- COMPLEX: a question with multiple distinct parts or that requires comparing/combining information from different topics\n"
-    "- AMBIGUOUS: a question that is too vague, unclear, or missing context to answer meaningfully as-is\n\n"
-    "Question: {query}\n\n"
-    "Reply with ONLY one word: SIMPLE, COMPLEX, or AMBIGUOUS."
+    "You are a coordinator agent for a document Q&A system. Given a user's question, do ALL of the following in one response:\n\n"
+    "1. Classify the question into exactly one category:\n"
+    "   - SIMPLE: a single, clear, answerable question about one topic\n"
+    "   - COMPLEX: a question with multiple distinct parts or that requires comparing/combining information from different topics\n"
+    "   - AMBIGUOUS: a question that is too vague, unclear, or missing context to answer meaningfully as-is\n\n"
+    "2. Depending on the classification, also produce:\n"
+    "   - If SIMPLE: the clearest, most specific search query for retrieval (one line)\n"
+    "   - If COMPLEX: 2-4 independent sub-questions that together fully cover the original question (numbered list, one per line)\n"
+    "   - If AMBIGUOUS: one brief, polite clarifying question to ask the user (one line)\n\n"
+    "Respond in EXACTLY this format, nothing else:\n"
+    "TYPE: <SIMPLE|COMPLEX|AMBIGUOUS>\n"
+    "OUTPUT:\n"
+    "<the corresponding output>\n\n"
+    "Question: {query}"
 )
 coordinator_chain = coordinator_prompt | model | parser
 
 def node_coordinator(state: dict) -> dict:
-    classification = coordinator_chain.invoke({"query": state["query"]}).strip().upper()
-    if classification not in ("SIMPLE", "COMPLEX", "AMBIGUOUS"):
-        classification = "SIMPLE"  # safe fallback
-    return {"question_type": classification}
+    raw = coordinator_chain.invoke({"query": state["query"]})
+
+    type_match = re.search(r"TYPE:\s*(SIMPLE|COMPLEX|AMBIGUOUS)", raw, re.IGNORECASE)
+    classification = type_match.group(1).upper() if type_match else "SIMPLE"
+
+    output_match = re.search(r"OUTPUT:\s*(.*)", raw, re.DOTALL)
+    output_text = output_match.group(1).strip() if output_match else ""
+
+    result = {"question_type": classification}
+
+    if classification == "SIMPLE":
+        result["search_query"] = output_text.split("\n")[0].strip()
+    elif classification == "COMPLEX":
+        sub_questions = []
+        for line in output_text.split("\n"):
+            cleaned = re.sub(r"^\s*\d+[\.\)]\s*", "", line).strip()
+            if cleaned:
+                sub_questions.append(cleaned)
+        result["sub_questions"] = sub_questions
+    elif classification == "AMBIGUOUS":
+        result["final_answer"] = output_text.split("\n")[0].strip()
+        result["evaluation"] = "N/A (clarification)"
+        result["attempts"] = 0
+
+    return result
 
 def route_after_coordinator(state: dict) -> str:
     return state["question_type"].lower()
-
-decompose_prompt = PromptTemplate.from_template(
-    "Break the following complex question into 2-4 simpler, independent sub-questions "
-    "that together fully cover the original question. "
-    "Reply with ONLY a numbered list, one sub-question per line, nothing else.\n\n"
-    "Question: {query}\n\n"
-    "Sub-questions:"
-)
-decompose_chain = decompose_prompt | model | parser
-
-def node_decompose(state: dict) -> dict:
-    raw = decompose_chain.invoke({"query": state["query"]})
-    sub_questions = []
-    for line in raw.strip().split("\n"):
-        cleaned = re.sub(r"^\s*\d+[\.\)]\s*", "", line).strip()
-        if cleaned:
-            sub_questions.append(cleaned)
-    return {"sub_questions": sub_questions}
 
 def node_multi_hop(state: dict) -> dict:
     sub_answers = []
@@ -87,18 +84,6 @@ def node_synthesize(state: dict) -> dict:
     )
     answer = synthesis_chain.invoke({"query": state["query"], "sub_answers_formatted": formatted})
     return {"final_answer": answer, "evaluation": "N/A (multi-hop)", "attempts": 1}
-
-clarify_prompt = PromptTemplate.from_template(
-    "The following user question is too vague or ambiguous to answer directly from documents. "
-    "Write one brief, polite clarifying question asking the user for the specific detail needed.\n\n"
-    "Question: {query}\n\n"
-    "Clarifying question:"
-)
-clarify_chain = clarify_prompt | model | parser
-
-def node_clarify(state: dict) -> dict:
-    clarification = clarify_chain.invoke({"query": state["query"]})
-    return {"final_answer": clarification, "evaluation": "N/A (clarification)", "attempts": 0}
 
 summarizer_prompt = PromptTemplate.from_template(
     "Answer the question using only the context below. "
@@ -160,11 +145,12 @@ def summarize_document(filename: str) -> str:
 
 if __name__ == "__main__":
     test_state = {"query": "What is RAG?", "attempts": 0}
-    test_state.update(node_planner(test_state))
+    test_state.update(node_coordinator(test_state))
+    print("Question type:", test_state["question_type"])
+    print("Search query:", test_state.get("search_query"))
     test_state.update(node_retrieval(test_state))
     test_state.update(node_summarizer(test_state))
     test_state.update(node_evaluator(test_state))
-    print("Search Query:", test_state["search_query"])
     print("\nFinal Answer:\n", test_state["final_answer"])
     print("\nEvaluation:", test_state["evaluation"])
     print("Route decision:", route_after_evaluator(test_state))
