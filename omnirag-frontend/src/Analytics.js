@@ -34,7 +34,6 @@ function Analytics() {
     fetchStats();
     fetchUsage();
 
-    // Poll both every 5 seconds so the dashboard updates live without a manual refresh
     const interval = setInterval(() => {
       fetchStats();
       fetchUsage();
@@ -44,71 +43,83 @@ function Analytics() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (error) return <p style={{ color: "red" }}>{error}</p>;
-  if (!stats) return <p>Loading analytics...</p>;
+  if (error) {
+    return (
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <p className="text-red-500 text-sm">{error}</p>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="animate-pulse space-y-3">
+          <div className="h-4 bg-gray-200 rounded w-1/3"></div>
+          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+          <div className="h-40 bg-gray-100 rounded"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ maxWidth: "600px", margin: "40px auto", fontFamily: "sans-serif" }}>
-      <h3>Analytics</h3>
-      <p>Total Documents: {stats.total_documents}</p>
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <h3 className="text-xl font-bold text-gray-800 mb-4">Analytics</h3>
+      <p className="text-gray-600 mb-4">Total Documents: {stats.total_documents}</p>
 
       {stats.upload_history.length > 0 && (
-        <>
-          <h4>Uploads (Last 7 Days)</h4>
-          <ResponsiveContainer width="100%" height={250}>
+        <div className="mb-6">
+          <h4 className="text-sm font-semibold text-gray-500 mb-2">Uploads (Last 7 Days)</h4>
+          <ResponsiveContainer width="100%" height={220}>
             <BarChart data={stats.upload_history}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis allowDecimals={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
               <Tooltip />
-              <Bar dataKey="count" fill="#61dafb" />
+              <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        </>
+        </div>
       )}
 
       {stats.documents_per_user.length > 0 && (
-        <>
-          <h4>Documents Per User</h4>
-          <ResponsiveContainer width="100%" height={250}>
+        <div className="mb-6">
+          <h4 className="text-sm font-semibold text-gray-500 mb-2">Documents Per User</h4>
+          <ResponsiveContainer width="100%" height={220}>
             <BarChart data={stats.documents_per_user}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="user" />
-              <YAxis allowDecimals={false} />
+              <XAxis dataKey="user" tick={{ fontSize: 12 }} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
               <Tooltip />
-              <Bar dataKey="count" fill="#82ca9d" />
+              <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        </>
+        </div>
       )}
 
       {usage && usage.total_queries > 0 && (
-        <>
-          <h4>LLM Token Usage</h4>
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "12px",
-            marginTop: "8px"
-          }}>
-            <div style={{ background: "#f3f4f6", padding: "12px", borderRadius: "8px" }}>
-              <div style={{ fontSize: "12px", color: "#6b7280" }}>Total Queries</div>
-              <div style={{ fontSize: "20px", fontWeight: "bold" }}>{usage.total_queries}</div>
+        <div>
+          <h4 className="text-sm font-semibold text-gray-500 mb-2">LLM Token Usage</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-gray-50 rounded-md p-3">
+              <div className="text-xs text-gray-400">Total Queries</div>
+              <div className="text-xl font-bold text-gray-800">{usage.total_queries}</div>
             </div>
-            <div style={{ background: "#f3f4f6", padding: "12px", borderRadius: "8px" }}>
-              <div style={{ fontSize: "12px", color: "#6b7280" }}>Total LLM Calls</div>
-              <div style={{ fontSize: "20px", fontWeight: "bold" }}>{usage.total_llm_calls}</div>
+            <div className="bg-gray-50 rounded-md p-3">
+              <div className="text-xs text-gray-400">Total LLM Calls</div>
+              <div className="text-xl font-bold text-gray-800">{usage.total_llm_calls}</div>
             </div>
-            <div style={{ background: "#f3f4f6", padding: "12px", borderRadius: "8px" }}>
-              <div style={{ fontSize: "12px", color: "#6b7280" }}>Total Tokens</div>
-              <div style={{ fontSize: "20px", fontWeight: "bold" }}>{usage.total_tokens.toLocaleString()}</div>
+            <div className="bg-gray-50 rounded-md p-3">
+              <div className="text-xs text-gray-400">Total Tokens</div>
+              <div className="text-xl font-bold text-gray-800">{usage.total_tokens.toLocaleString()}</div>
             </div>
-            <div style={{ background: "#f3f4f6", padding: "12px", borderRadius: "8px" }}>
-              <div style={{ fontSize: "12px", color: "#6b7280" }}>Avg Tokens / Query</div>
-              <div style={{ fontSize: "20px", fontWeight: "bold" }}>{usage.avg_tokens_per_query}</div>
+            <div className="bg-gray-50 rounded-md p-3">
+              <div className="text-xs text-gray-400">Avg Tokens / Query</div>
+              <div className="text-xl font-bold text-gray-800">{usage.avg_tokens_per_query}</div>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
