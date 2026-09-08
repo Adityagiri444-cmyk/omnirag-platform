@@ -8,7 +8,6 @@ import './App.css';
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // On page load, check if a token already exists (so refreshing doesn't log you out)
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (token) {
@@ -27,20 +26,29 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="bg-white shadow-sm py-6 px-4 text-center">
-        <h2 className="text-2xl font-bold text-gray-800">Welcome to the OmniRAG Dashboard</h2>
-        <p className="text-gray-500 mt-1">You are logged in.</p>
+    <div className="min-h-screen" style={{ backgroundColor: "#F5F6FA" }}>
+      <div
+        className="flex items-center justify-between px-6 py-4"
+        style={{ backgroundColor: "#1B1E3D" }}
+      >
+        <h2
+          className="text-xl font-semibold text-white"
+          style={{ fontFamily: "'Lora', serif" }}
+        >
+          OmniRAG
+        </h2>
         <button
           onClick={handleLogout}
-          className="mt-4 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors"
+          className="px-4 py-1.5 text-sm rounded-md font-medium transition-colors"
+          style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#fff" }}
+          onMouseEnter={(e) => (e.target.style.backgroundColor = "rgba(255,255,255,0.18)")}
+          onMouseLeave={(e) => (e.target.style.backgroundColor = "rgba(255,255,255,0.1)")}
         >
-          Logout
+          Log out
         </button>
       </div>
-
-      <div className="max-w-3xl mx-auto py-8 px-4 space-y-8">
-                <Query />
+      <div className="max-w-3xl mx-auto py-8 px-4 space-y-6">
+        <Query />
         <Analytics />
         <Documents />
       </div>

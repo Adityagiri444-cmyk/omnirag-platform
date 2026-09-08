@@ -21,6 +21,11 @@ const STEP_LABELS = {
   compute: "Compute",
 };
 
+const INK = "#1B1E3D";
+const SIGNAL = "#4C5FD5";
+const SAGE = "#4F9D69";
+const SLATE = "#5B6472";
+
 function Query() {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([]);
@@ -50,10 +55,7 @@ function Query() {
           setRunning(false);
 
           if (data.error) {
-            setMessages((prev) => [
-              ...prev,
-              { type: "error", text: data.error },
-            ]);
+            setMessages((prev) => [...prev, { type: "error", text: data.error }]);
           } else {
             setMessages((prev) => [
               ...prev,
@@ -70,10 +72,7 @@ function Query() {
       } catch (err) {
         clearInterval(pollRef.current);
         setRunning(false);
-        setMessages((prev) => [
-          ...prev,
-          { type: "error", text: "Failed to check status" },
-        ]);
+        setMessages((prev) => [...prev, { type: "error", text: "Failed to check status" }]);
       }
     }, 2000);
   };
@@ -138,12 +137,20 @@ function Query() {
   const activeSteps = questionType ? STEP_PATHS[questionType] : ["coordinator"];
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h3 className="text-xl font-bold text-gray-800 mb-4">Ask OmniRAG</h3>
+    <div
+      className="bg-white rounded-lg p-6"
+      style={{
+        boxShadow: "0 4px 20px rgba(27,30,61,0.08)",
+        borderTop: `3px solid ${SIGNAL}`,
+      }}
+    >
+      <h3 className="text-xl font-semibold mb-4" style={{ color: INK, fontFamily: "'Lora', serif" }}>
+        Ask OmniRAG
+      </h3>
 
       <div className="max-h-96 overflow-y-auto mb-4 space-y-3 pr-1">
         {messages.length === 0 && !running && (
-          <p className="text-gray-400 text-sm text-center py-6">
+          <p className="text-sm text-center py-6" style={{ color: "#9298AB" }}>
             Ask a question about your documents to get started.
           </p>
         )}
@@ -152,7 +159,10 @@ function Query() {
           if (msg.type === "user") {
             return (
               <div key={i} className="flex justify-end">
-                <div className="bg-blue-500 text-white rounded-lg px-4 py-2 max-w-[80%]">
+                <div
+                  className="text-white rounded-lg px-4 py-2 max-w-[80%]"
+                  style={{ backgroundColor: SIGNAL }}
+                >
                   {msg.text}
                 </div>
               </div>
@@ -169,16 +179,20 @@ function Query() {
           }
           return (
             <div key={i} className="flex justify-start">
-              <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2 max-w-[80%]">
-                <p className="text-gray-800">{msg.text}</p>
+              <div
+                className="rounded-lg px-4 py-2 max-w-[80%]"
+                style={{ backgroundColor: "#F5F6FA", border: "1px solid #E4E6EF" }}
+              >
+                <p style={{ color: INK }}>{msg.text}</p>
                 <div className="flex items-center justify-between mt-1">
-                  <p className="text-xs text-gray-400">
+                  <p className="text-xs" style={{ color: SLATE }}>
                     Evaluation: {msg.evaluation} · Attempts: {msg.attempts}
                   </p>
                   {msg.taskId && (
                     <button
                       onClick={() => handleDownloadReport(msg.taskId)}
-                      className="text-xs text-blue-500 hover:underline ml-3 whitespace-nowrap"
+                      className="text-xs hover:underline ml-3 whitespace-nowrap"
+                      style={{ color: SIGNAL }}
                     >
                       Download Report
                     </button>
@@ -191,9 +205,12 @@ function Query() {
 
         {running && (
           <div className="flex justify-start">
-            <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 max-w-[80%] w-full">
+            <div
+              className="rounded-lg px-4 py-3 max-w-[80%] w-full"
+              style={{ backgroundColor: "#F5F6FA", border: "1px solid #E4E6EF" }}
+            >
               {questionType && (
-                <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-2">
+                <p className="text-[10px] uppercase tracking-wide mb-2" style={{ color: "#9298AB" }}>
                   {questionType} question detected
                 </p>
               )}
@@ -204,23 +221,25 @@ function Query() {
                     <div key={step} className="flex items-center flex-1">
                       <div className="flex flex-col items-center flex-1">
                         <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 ${status === "done"
-                              ? "bg-green-500 border-green-500 text-white"
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2"
+                          style={
+                            status === "done"
+                              ? { backgroundColor: SAGE, borderColor: SAGE, color: "#fff" }
                               : status === "active"
-                                ? "bg-blue-500 border-blue-500 text-white animate-pulse"
-                                : "bg-gray-100 border-gray-300 text-gray-400"
-                            }`}
+                                ? { backgroundColor: SIGNAL, borderColor: SIGNAL, color: "#fff" }
+                                : { backgroundColor: "#F0F1F6", borderColor: "#D5D8E3", color: "#9298AB" }
+                          }
                         >
                           {status === "done" ? "✓" : i + 1}
                         </div>
-                        <span className="text-[10px] mt-1 text-gray-500">
+                        <span className="text-[10px] mt-1" style={{ color: SLATE }}>
                           {STEP_LABELS[step]}
                         </span>
                       </div>
                       {i < activeSteps.length - 1 && (
                         <div
-                          className={`h-0.5 flex-1 -mt-4 ${completedSteps.includes(step) ? "bg-green-400" : "bg-gray-200"
-                            }`}
+                          className="h-0.5 flex-1 -mt-4"
+                          style={{ backgroundColor: completedSteps.includes(step) ? SAGE : "#E4E6EF" }}
                         />
                       )}
                     </div>
@@ -240,12 +259,16 @@ function Query() {
           placeholder="Ask a question about your documents..."
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
+          className="flex-1 px-3 py-2 border rounded-md focus:outline-none transition-colors"
+          style={{ borderColor: "#D5D8E3" }}
+          onFocus={(e) => (e.target.style.boxShadow = `0 0 0 2px ${SIGNAL}`)}
+          onBlur={(e) => (e.target.style.boxShadow = "none")}
         />
         <button
           type="submit"
           disabled={running || !question.trim()}
-          className="px-4 py-2 bg-blue-500 text-white rounded-md font-medium hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-md font-medium text-white transition-colors"
+          style={{ backgroundColor: running || !question.trim() ? "#B7BEEA" : SIGNAL }}
         >
           {running ? "Thinking..." : "Ask"}
         </button>

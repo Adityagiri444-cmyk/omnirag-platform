@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
 import { authFetch } from "./api";
 
+const INK = "#1B1E3D";
+const SIGNAL = "#4C5FD5";
+const SLATE = "#5B6472";
+const AMBER = "#C97B2E";
+
 function Documents() {
   const [documents, setDocuments] = useState([]);
   const [file, setFile] = useState(null);
@@ -47,7 +52,7 @@ function Documents() {
       }
 
       setFile(null);
-      fetchDocuments(); // refresh the list
+      fetchDocuments();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -66,7 +71,7 @@ function Documents() {
         throw new Error(errData.detail || "Delete failed");
       }
 
-      fetchDocuments(); // refresh the list
+      fetchDocuments();
     } catch (err) {
       setError(err.message);
     }
@@ -86,26 +91,29 @@ function Documents() {
     }
   };
 
-  // Filter documents by filename, case-insensitive
   const filteredDocuments = documents.filter((doc) =>
     doc.filename.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
-      <h3 className="text-xl font-bold text-gray-800 mb-4">My Documents</h3>
+      <h3 className="text-xl font-semibold mb-4" style={{ color: INK, fontFamily: "'Lora', serif" }}>
+        My Documents
+      </h3>
 
       <form onSubmit={handleUpload} className="flex items-center gap-3 mb-4">
         <input
           type="file"
           accept=".pdf"
           onChange={(e) => setFile(e.target.files[0])}
-          className="text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-blue-50 file:text-blue-600 file:font-medium hover:file:bg-blue-100"
+          className="text-sm"
+          style={{ color: SLATE }}
         />
         <button
           type="submit"
           disabled={uploading || !file}
-          className="px-4 py-2 bg-blue-500 text-white rounded-md font-medium hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+          className="px-4 py-2 rounded-md font-medium text-white transition-colors whitespace-nowrap"
+          style={{ backgroundColor: uploading || !file ? "#B7BEEA" : SIGNAL }}
         >
           {uploading ? "Uploading..." : "Upload PDF"}
         </button>
@@ -116,34 +124,46 @@ function Documents() {
         placeholder="Search documents by name..."
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        className="w-full px-3 py-2 border rounded-md mb-4 focus:outline-none transition-colors"
+        style={{ borderColor: "#D5D8E3" }}
+        onFocus={(e) => (e.target.style.boxShadow = `0 0 0 2px ${SIGNAL}`)}
+        onBlur={(e) => (e.target.style.boxShadow = "none")}
       />
 
-      {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
+      {error && (
+        <p className="text-sm mb-3" style={{ color: "#C0392B" }}>
+          {error}
+        </p>
+      )}
 
-      <ul className="divide-y divide-gray-200">
+      <ul className="divide-y" style={{ borderColor: "#EEEFF4" }}>
         {filteredDocuments.map((doc) => (
           <li key={doc.id} className="py-3">
             <div className="flex items-center justify-between">
-              <span className="text-gray-700">{doc.filename}</span>
+              <span style={{ color: INK }}>{doc.filename}</span>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleSummarize(doc.id)}
                   disabled={summarizing[doc.id]}
-                  className="px-3 py-1 text-sm bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 transition-colors disabled:opacity-50"
+                  className="px-3 py-1 text-sm rounded-md transition-colors disabled:opacity-50"
+                  style={{ backgroundColor: "#EDEFFB", color: SIGNAL }}
                 >
                   {summarizing[doc.id] ? "Summarizing..." : "Summarize"}
                 </button>
                 <button
                   onClick={() => handleDelete(doc.id)}
-                  className="px-3 py-1 text-sm bg-red-50 text-red-600 rounded-md hover:bg-red-100 transition-colors"
+                  className="px-3 py-1 text-sm rounded-md transition-colors"
+                  style={{ backgroundColor: "#FBEFE7", color: AMBER }}
                 >
                   Delete
                 </button>
               </div>
             </div>
             {summaries[doc.id] && (
-              <p className="text-sm text-gray-600 mt-2 bg-gray-50 rounded-md p-3">
+              <p
+                className="text-sm mt-2 rounded-md p-3"
+                style={{ color: SLATE, backgroundColor: "#F5F6FA" }}
+              >
                 {summaries[doc.id]}
               </p>
             )}
@@ -152,10 +172,14 @@ function Documents() {
       </ul>
 
       {documents.length === 0 && (
-        <p className="text-gray-400 text-sm text-center py-4">No documents uploaded yet.</p>
+        <p className="text-sm text-center py-4" style={{ color: "#9298AB" }}>
+          No documents uploaded yet.
+        </p>
       )}
       {documents.length > 0 && filteredDocuments.length === 0 && (
-        <p className="text-gray-400 text-sm text-center py-4">No documents match your search.</p>
+        <p className="text-sm text-center py-4" style={{ color: "#9298AB" }}>
+          No documents match your search.
+        </p>
       )}
     </div>
   );
