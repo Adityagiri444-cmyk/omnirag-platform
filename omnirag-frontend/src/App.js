@@ -26,9 +26,12 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#F5F6FA" }}>
+    <div
+      className="min-h-screen lg:h-screen flex flex-col lg:overflow-hidden"
+      style={{ backgroundColor: "#F5F6FA" }}
+    >
       <div
-        className="flex items-center justify-between px-6 py-4"
+        className="flex items-center justify-between px-8 py-4 flex-shrink-0"
         style={{ backgroundColor: "#1B1E3D" }}
       >
         <h2
@@ -47,10 +50,18 @@ function App() {
           Log out
         </button>
       </div>
-      <div className="max-w-3xl mx-auto py-8 px-4 space-y-6">
-        <Query />
-        <Analytics />
-        <Documents />
+      <div className="flex-1 lg:min-h-0 grid grid-cols-1 lg:grid-cols-5 gap-6 p-6 lg:overflow-hidden">
+        <div className="lg:col-span-3 lg:h-full lg:min-h-0">
+          <Query />
+        </div>
+        <div className="lg:col-span-2 lg:h-full flex flex-col gap-6 lg:min-h-0">
+          <div className="flex-shrink-0">
+            <Analytics />
+          </div>
+          <div className="flex-1 lg:min-h-0">
+            <Documents />
+          </div>
+        </div>
       </div>
     </div>
   );

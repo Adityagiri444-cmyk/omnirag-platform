@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { authFetch } from "./api";
 
 const STEP_PATHS = {
@@ -25,6 +27,66 @@ const INK = "#1B1E3D";
 const SIGNAL = "#4C5FD5";
 const SAGE = "#4F9D69";
 const SLATE = "#5B6472";
+
+const markdownComponents = {
+  table: ({ children }) => (
+    <div className="overflow-x-auto my-3">
+      <table className="min-w-full border-collapse text-sm">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => (
+    <thead style={{ backgroundColor: "#EDEFFB" }}>{children}</thead>
+  ),
+  th: ({ children }) => (
+    <th
+      className="text-left px-3 py-2 font-semibold"
+      style={{ color: INK, border: "1px solid #E4E6EF" }}
+    >
+      {children}
+    </th>
+  ),
+  td: ({ children }) => (
+    <td className="px-3 py-2" style={{ border: "1px solid #E4E6EF", color: INK }}>
+      {children}
+    </td>
+  ),
+  h1: ({ children }) => (
+    <h1 className="text-lg font-semibold mt-3 mb-2" style={{ color: INK }}>
+      {children}
+    </h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="text-base font-semibold mt-3 mb-2" style={{ color: INK }}>
+      {children}
+    </h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="text-sm font-semibold mt-2 mb-1" style={{ color: INK }}>
+      {children}
+    </h3>
+  ),
+  p: ({ children }) => <p className="mb-2 leading-relaxed">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-1">{children}</ol>,
+  code: ({ inline, children }) =>
+    inline ? (
+      <code
+        className="px-1 py-0.5 rounded text-xs"
+        style={{ backgroundColor: "#EDEFFB", color: SIGNAL }}
+      >
+        {children}
+      </code>
+    ) : (
+      <pre
+        className="rounded-md p-3 my-2 overflow-x-auto text-xs"
+        style={{ backgroundColor: "#1B1E3D", color: "#F5F6FA" }}
+      >
+        <code>{children}</code>
+      </pre>
+    ),
+  strong: ({ children }) => <strong style={{ color: INK }}>{children}</strong>,
+  hr: () => <hr className="my-3" style={{ borderColor: "#E4E6EF" }} />,
+};
 
 function Query() {
   const [question, setQuestion] = useState("");
@@ -138,17 +200,22 @@ function Query() {
 
   return (
     <div
-      className="bg-white rounded-lg p-6"
+      className="bg-white rounded-lg p-6 flex flex-col h-full"
       style={{
         boxShadow: "0 4px 20px rgba(27,30,61,0.08)",
         borderTop: `3px solid ${SIGNAL}`,
+        height: "100%",
+        minHeight: "500px",
       }}
     >
-      <h3 className="text-xl font-semibold mb-4" style={{ color: INK, fontFamily: "'Lora', serif" }}>
+      <h3
+        className="text-xl font-semibold mb-4 flex-shrink-0"
+        style={{ color: INK, fontFamily: "'Lora', serif" }}
+      >
         Ask OmniRAG
       </h3>
 
-      <div className="max-h-96 overflow-y-auto mb-4 space-y-3 pr-1">
+      <div className="flex-1 overflow-y-auto mb-4 space-y-3 pr-1">
         {messages.length === 0 && !running && (
           <p className="text-sm text-center py-6" style={{ color: "#9298AB" }}>
             Ask a question about your documents to get started.
@@ -160,7 +227,7 @@ function Query() {
             return (
               <div key={i} className="flex justify-end">
                 <div
-                  className="text-white rounded-lg px-4 py-2 max-w-[80%]"
+                  className="text-white rounded-lg px-4 py-2 max-w-[85%]"
                   style={{ backgroundColor: SIGNAL }}
                 >
                   {msg.text}
@@ -171,7 +238,7 @@ function Query() {
           if (msg.type === "error") {
             return (
               <div key={i} className="flex justify-start">
-                <div className="bg-red-50 text-red-600 rounded-lg px-4 py-2 max-w-[80%] text-sm">
+                <div className="bg-red-50 text-red-600 rounded-lg px-4 py-2 max-w-[85%] text-sm">
                   {msg.text}
                 </div>
               </div>
@@ -180,11 +247,15 @@ function Query() {
           return (
             <div key={i} className="flex justify-start">
               <div
-                className="rounded-lg px-4 py-2 max-w-[80%]"
+                className="rounded-lg px-4 py-3 max-w-[85%] w-full text-sm"
                 style={{ backgroundColor: "#F5F6FA", border: "1px solid #E4E6EF" }}
               >
-                <p style={{ color: INK }}>{msg.text}</p>
-                <div className="flex items-center justify-between mt-1">
+                <div style={{ color: INK }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                    {msg.text}
+                  </ReactMarkdown>
+                </div>
+                <div className="flex items-center justify-between mt-2 pt-2" style={{ borderTop: "1px solid #E4E6EF" }}>
                   <p className="text-xs" style={{ color: SLATE }}>
                     Evaluation: {msg.evaluation} · Attempts: {msg.attempts}
                   </p>
@@ -206,7 +277,7 @@ function Query() {
         {running && (
           <div className="flex justify-start">
             <div
-              className="rounded-lg px-4 py-3 max-w-[80%] w-full"
+              className="rounded-lg px-4 py-3 max-w-[85%] w-full"
               style={{ backgroundColor: "#F5F6FA", border: "1px solid #E4E6EF" }}
             >
               {questionType && (
@@ -253,7 +324,7 @@ function Query() {
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="flex items-center gap-3">
+      <form onSubmit={handleSubmit} className="flex items-center gap-3 flex-shrink-0">
         <input
           type="text"
           placeholder="Ask a question about your documents..."
