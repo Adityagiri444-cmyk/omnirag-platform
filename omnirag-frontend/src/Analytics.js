@@ -2,6 +2,11 @@ import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
 import { authFetch } from "./api";
 
+const INK = "#1B1E3D";
+const SLATE = "#5B6472";
+const SIGNAL = "#4C5FD5";
+const AMBER = "#C97B2E";
+
 function Analytics() {
   const [stats, setStats] = useState(null);
   const [usage, setUsage] = useState(null);
@@ -63,9 +68,16 @@ function Analytics() {
     );
   }
 
+  const rpmUsed = usage?.requests_last_minute || 0;
+  const rpmLimit = usage?.rpm_limit || 30;
+  const rpmPercent = Math.min((rpmUsed / rpmLimit) * 100, 100);
+  const rpmColor = rpmPercent > 80 ? AMBER : SIGNAL;
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
-      <h3 className="text-xl font-bold text-gray-800 mb-4">Analytics</h3>
+      <h3 className="text-xl font-semibold mb-4" style={{ color: INK, fontFamily: "'Lora', serif" }}>
+        Analytics
+      </h3>
       <p className="text-gray-600 mb-4">Total Documents: {stats.total_documents}</p>
 
       {stats.upload_history.length > 0 && (
@@ -77,7 +89,7 @@ function Analytics() {
               <XAxis dataKey="date" tick={{ fontSize: 12 }} />
               <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
               <Tooltip />
-              <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="count" fill={SIGNAL} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -101,6 +113,22 @@ function Analytics() {
       {usage && usage.total_queries > 0 && (
         <div>
           <h4 className="text-sm font-semibold text-gray-500 mb-2">LLM Token Usage</h4>
+
+          <div className="mb-3">
+            <div className="flex items-center justify-between text-xs mb-1">
+              <span style={{ color: SLATE }}>Rate limit (per minute)</span>
+              <span style={{ color: rpmColor, fontWeight: 600 }}>
+                {rpmUsed} / {rpmLimit}
+              </span>
+            </div>
+            <div className="w-full h-2 rounded-full" style={{ backgroundColor: "#EEEFF4" }}>
+              <div
+                className="h-2 rounded-full transition-all"
+                style={{ width: `${rpmPercent}%`, backgroundColor: rpmColor }}
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-gray-50 rounded-md p-3">
               <div className="text-xs text-gray-400">Total Queries</div>

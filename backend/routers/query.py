@@ -18,15 +18,17 @@ class QueryResponse(BaseModel):
     evaluation: str
     attempts: int
 
-# In-memory task status store (fine for single-user local dev, not production-scale)
 task_status: dict = {}
 
-# Running totals across all queries, for the Analytics dashboard
 usage_totals = {
     "total_queries": 0,
     "total_llm_calls": 0,
     "total_tokens": 0,
 }
+
+def is_rate_limit_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "429" in text or "rate limit" in text or "rate_limit" in text
 
 def run_graph_task(task_id: str, question: str):
     task_status[task_id] = {
@@ -70,7 +72,13 @@ def run_graph_task(task_id: str, question: str):
         usage_totals["total_tokens"] += usage["total_tokens"]
     except Exception as e:
         task_status[task_id]["done"] = True
-        task_status[task_id]["error"] = str(e)
+        if is_rate_limit_error(e):
+            task_status[task_id]["error"] = (
+                "We're hitting high demand on the free AI service right now. "
+                "Please wait about 30 seconds and try again."
+            )
+        else:
+            task_status[task_id]["error"] = str(e)
 
 @router.post("/", response_model=QueryResponse)
 def run_query(
@@ -115,6 +123,8 @@ def get_usage_summary(current_user: User = Depends(get_current_user)):
         "total_llm_calls": usage_totals["total_llm_calls"],
         "total_tokens": usage_totals["total_tokens"],
         "avg_tokens_per_query": round(avg_tokens, 1),
+        "requests_last_minute": TokenUsageTracker.requests_in_last_minute(),
+        "rpm_limit": 30,
     }
 
 @router.get("/report/{task_id}")

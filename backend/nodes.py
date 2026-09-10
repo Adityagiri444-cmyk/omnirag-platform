@@ -8,7 +8,11 @@ from retriever import retrieve, get_document_text, hierarchical_retrieve, get_do
 from sandbox import run_sandboxed
 import re
 
-model = ChatGroq(model="openai/gpt-oss-20b")
+model = ChatGroq(model="openai/gpt-oss-20b").with_retry(
+    retry_if_exception_type=(Exception,),
+    stop_after_attempt=3,
+    wait_exponential_jitter=True,
+)
 parser = StrOutputParser()
 
 coordinator_prompt = PromptTemplate.from_template(
