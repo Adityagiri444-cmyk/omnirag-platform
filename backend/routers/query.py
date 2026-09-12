@@ -8,6 +8,7 @@ from graph import graph
 from report_generator import generate_query_report
 from token_tracker import TokenUsageTracker
 from conversation_memory import add_turn, format_history, clear_history
+from query_cache import get_cached_answer, add_to_cache
 
 router = APIRouter(prefix="/query", tags=["Query"])
 
@@ -25,6 +26,7 @@ usage_totals = {
     "total_queries": 0,
     "total_llm_calls": 0,
     "total_tokens": 0,
+    "cache_hits": 0,
 }
 
 def is_rate_limit_error(exc: Exception) -> bool:
@@ -45,7 +47,24 @@ def run_graph_task(task_id: str, question: str, user_id: int):
         "attempts": None,
         "error": None,
         "token_usage": None,
+        "from_cache": False,
     }
+
+    cached = get_cached_answer(question)
+    if cached:
+        task_status[task_id]["done"] = True
+        task_status[task_id]["current_step"] = None
+        task_status[task_id]["completed_steps"] = ["cache"]
+        task_status[task_id]["question_type"] = cached["question_type"]
+        task_status[task_id]["answer"] = cached["answer"]
+        task_status[task_id]["evaluation"] = cached["evaluation"]
+        task_status[task_id]["attempts"] = 0
+        task_status[task_id]["from_cache"] = True
+        task_status[task_id]["token_usage"] = {"llm_calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        usage_totals["cache_hits"] += 1
+        add_turn(user_id, question, cached["answer"])
+        return
+
     history_text = format_history(user_id)
     state = {"query": question, "attempts": 0, "history_text": history_text}
     tracker = TokenUsageTracker()
@@ -61,18 +80,21 @@ def run_graph_task(task_id: str, question: str, user_id: int):
 
         usage = tracker.summary()
         final_answer = state.get("final_answer")
+        question_type = state.get("question_type")
+        evaluation = state.get("evaluation")
 
         task_status[task_id]["done"] = True
         task_status[task_id]["current_step"] = None
         task_status[task_id]["search_query"] = state.get("search_query")
         task_status[task_id]["retrieved_docs"] = state.get("retrieved_docs")
         task_status[task_id]["answer"] = final_answer
-        task_status[task_id]["evaluation"] = state.get("evaluation")
+        task_status[task_id]["evaluation"] = evaluation
         task_status[task_id]["attempts"] = state.get("attempts")
         task_status[task_id]["token_usage"] = usage
 
-        if final_answer and state.get("question_type") != "AMBIGUOUS":
+        if final_answer and question_type != "AMBIGUOUS":
             add_turn(user_id, question, final_answer)
+            add_to_cache(question, final_answer, question_type, evaluation)
 
         usage_totals["total_queries"] += 1
         usage_totals["total_llm_calls"] += usage["llm_calls"]
@@ -92,10 +114,20 @@ def run_query(
     request: QueryRequest,
     current_user: User = Depends(get_current_user)
 ):
+    cached = get_cached_answer(request.question)
+    if cached:
+        add_turn(current_user.id, request.question, cached["answer"])
+        return {
+            "answer": cached["answer"],
+            "evaluation": cached["evaluation"],
+            "attempts": 0
+        }
+
     history_text = format_history(current_user.id)
     result = graph.invoke({"query": request.question, "attempts": 0, "history_text": history_text})
     if result.get("final_answer"):
         add_turn(current_user.id, request.question, result["final_answer"])
+        add_to_cache(request.question, result["final_answer"], result.get("question_type"), result.get("evaluation"))
     return {
         "answer": result["final_answer"],
         "evaluation": result["evaluation"],
@@ -140,6 +172,7 @@ def get_usage_summary(current_user: User = Depends(get_current_user)):
         "avg_tokens_per_query": round(avg_tokens, 1),
         "requests_last_minute": TokenUsageTracker.requests_in_last_minute(),
         "rpm_limit": 30,
+        "cache_hits": usage_totals["cache_hits"],
     }
 
 @router.get("/report/{task_id}")

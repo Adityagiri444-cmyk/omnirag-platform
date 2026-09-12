@@ -6,3 +6,5 @@ __pycache__/
 omnirag-platform/
 chroma_db/
 chroma_summaries_db/
+chroma_query_cache_db/
+.vscode/
