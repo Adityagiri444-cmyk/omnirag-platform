@@ -16,31 +16,40 @@ model = ChatGroq(model="openai/gpt-oss-20b").with_retry(
 parser = StrOutputParser()
 
 coordinator_prompt = PromptTemplate.from_template(
-    "You are a coordinator agent for a document Q&A system. Given a user's question, do ALL of the following in one response:\n\n"
-    "1. Classify the question into exactly one category:\n"
+    "You are a coordinator agent for a document Q&A system with conversation memory.\n\n"
+    "Recent conversation history:\n{history}\n\n"
+    "Current user question: {query}\n\n"
+    "Do ALL of the following in one response:\n\n"
+    "1. If the current question refers back to the conversation (e.g., uses words like 'it', 'that', "
+    "'the previous one', 'explain more', or is otherwise incomplete without context), rewrite it into "
+    "a fully self-contained question using the history above. If it's already self-contained, just repeat it as-is.\n\n"
+    "2. Classify the RESOLVED question into exactly one category:\n"
     "   - SIMPLE: a single, clear, answerable question about the CONTENT of documents\n"
     "   - COMPLEX: a question with multiple distinct parts, or comparing/combining information from different topics\n"
-    "   - AMBIGUOUS: a question too vague or unclear to answer meaningfully as-is\n"
+    "   - AMBIGUOUS: a question too vague or unclear to answer meaningfully even with the history above\n"
     "   - COMPUTE: a question asking for a CALCULATION or STATISTIC about the document collection itself "
-    "(e.g., how many documents, total/average word count, which document is longest/shortest) - NOT about document content\n\n"
-    "2. Depending on the classification, also produce:\n"
+    "(e.g., how many documents, total/average word count) - NOT about document content\n\n"
+    "3. Depending on the classification, also produce:\n"
     "   - If SIMPLE: the clearest, most specific search query for retrieval (one line)\n"
-    "   - If COMPLEX: 2-4 independent sub-questions that together fully cover the original question (numbered list, one per line)\n"
+    "   - If COMPLEX: 2-4 independent sub-questions that together fully cover the resolved question (numbered list, one per line)\n"
     "   - If AMBIGUOUS: one brief, polite clarifying question to ask the user (one line)\n"
-    "   - If COMPUTE: a short Python snippet that computes the answer using a pre-existing variable `data`, "
-    "which is a list of dicts, each with keys 'filename', 'word_count', 'char_count'. "
-    "The snippet MUST end with a print() statement showing the final answer in a clear sentence. "
-    "Only use built-in Python plus math/statistics/collections - no imports needed for simple counts/sums/averages.\n\n"
+    "   - If COMPUTE: a short Python snippet using a pre-existing variable `data` "
+    "(a list of dicts with keys 'filename', 'word_count', 'char_count'). "
+    "The snippet MUST end with a print() statement. Only use built-in Python plus math/statistics/collections.\n\n"
     "Respond in EXACTLY this format, nothing else:\n"
+    "RESOLVED: <the self-contained resolved question>\n"
     "TYPE: <SIMPLE|COMPLEX|AMBIGUOUS|COMPUTE>\n"
     "OUTPUT:\n"
-    "<the corresponding output>\n\n"
-    "Question: {query}"
+    "<the corresponding output>"
 )
 coordinator_chain = coordinator_prompt | model | parser
 
 def node_coordinator(state: dict) -> dict:
-    raw = coordinator_chain.invoke({"query": state["query"]})
+    history_text = state.get("history_text", "(no prior conversation)")
+    raw = coordinator_chain.invoke({"history": history_text, "query": state["query"]})
+
+    resolved_match = re.search(r"RESOLVED:\s*(.*?)\n(?=TYPE:)", raw, re.DOTALL)
+    resolved_query = resolved_match.group(1).strip() if resolved_match else state["query"]
 
     type_match = re.search(r"TYPE:\s*(SIMPLE|COMPLEX|AMBIGUOUS|COMPUTE)", raw, re.IGNORECASE)
     classification = type_match.group(1).upper() if type_match else "SIMPLE"
@@ -48,7 +57,7 @@ def node_coordinator(state: dict) -> dict:
     output_match = re.search(r"OUTPUT:\s*(.*)", raw, re.DOTALL)
     output_text = output_match.group(1).strip() if output_match else ""
 
-    result = {"question_type": classification}
+    result = {"question_type": classification, "resolved_query": resolved_query}
 
     if classification == "SIMPLE":
         result["search_query"] = output_text.split("\n")[0].strip()
@@ -85,13 +94,14 @@ def node_compute(state: dict) -> dict:
     }
 
 def node_multi_hop(state: dict) -> dict:
+    query_to_use = state.get("resolved_query", state["query"])
     sub_answers = []
     for sub_q in state["sub_questions"]:
         docs = hierarchical_retrieve(sub_q, k_docs=2, k_chunks=2)
         context = "\n\n".join(docs)
         answer = summarizer_chain.invoke({"context": context, "question": sub_q})
         sub_answers.append({"question": sub_q, "answer": answer})
-    return {"sub_answers": sub_answers}
+    return {"sub_answers": sub_answers, "resolved_query": query_to_use}
 
 synthesis_prompt = PromptTemplate.from_template(
     "You are given a complex original question and answers to its sub-questions. "
@@ -103,10 +113,11 @@ synthesis_prompt = PromptTemplate.from_template(
 synthesis_chain = synthesis_prompt | model | parser
 
 def node_synthesize(state: dict) -> dict:
+    query_to_use = state.get("resolved_query", state["query"])
     formatted = "\n\n".join(
         f"Q: {item['question']}\nA: {item['answer']}" for item in state["sub_answers"]
     )
-    answer = synthesis_chain.invoke({"query": state["query"], "sub_answers_formatted": formatted})
+    answer = synthesis_chain.invoke({"query": query_to_use, "sub_answers_formatted": formatted})
     return {"final_answer": answer, "evaluation": "N/A (multi-hop)", "attempts": 1}
 
 summarizer_prompt = PromptTemplate.from_template(
@@ -119,12 +130,13 @@ summarizer_prompt = PromptTemplate.from_template(
 summarizer_chain = summarizer_prompt | model | parser
 
 def node_summarizer(state: dict) -> dict:
+    query_to_use = state.get("resolved_query", state["query"])
     context = "\n\n".join(state["retrieved_docs"])
-    answer = summarizer_chain.invoke({"context": context, "question": state["query"]})
+    answer = summarizer_chain.invoke({"context": context, "question": query_to_use})
     return {"final_answer": answer}
 
 def node_retrieval(state: dict) -> dict:
-    query_to_use = state.get("search_query", state["query"])
+    query_to_use = state.get("search_query", state.get("resolved_query", state["query"]))
     docs = hierarchical_retrieve(query_to_use, k_docs=2, k_chunks=3)
     return {"retrieved_docs": docs}
 
@@ -138,9 +150,10 @@ evaluator_prompt = PromptTemplate.from_template(
 evaluator_chain = evaluator_prompt | model | parser
 
 def node_evaluator(state: dict) -> dict:
+    query_to_use = state.get("resolved_query", state["query"])
     context = "\n\n".join(state["retrieved_docs"])
     verdict = evaluator_chain.invoke({
-        "question": state["query"],
+        "question": query_to_use,
         "context": context,
         "answer": state["final_answer"]
     }).strip().upper()
@@ -164,13 +177,11 @@ def summarize_document(filename: str) -> str:
     text = get_document_text(filename)
     if not text:
         return "No content found for this document."
-    text = text[:6000]  # keep within model context limits
+    text = text[:6000]
     return summary_chain.invoke({"text": text})
 
 if __name__ == "__main__":
-    test_state = {"query": "How many documents do I have and what's their average word count?", "attempts": 0}
+    test_state = {"query": "What is RAG?", "attempts": 0, "history_text": "(no prior conversation)"}
     test_state.update(node_coordinator(test_state))
-    print("Question type:", test_state["question_type"])
-    print("Generated code:\n", test_state.get("compute_code"))
-    test_state.update(node_compute(test_state))
-    print("\nFinal Answer:\n", test_state["final_answer"])
+    print("Resolved:", test_state["resolved_query"])
+    print("Type:", test_state["question_type"])

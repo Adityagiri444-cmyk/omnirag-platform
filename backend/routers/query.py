@@ -7,6 +7,7 @@ from dependencies import get_current_user
 from graph import graph
 from report_generator import generate_query_report
 from token_tracker import TokenUsageTracker
+from conversation_memory import add_turn, format_history, clear_history
 
 router = APIRouter(prefix="/query", tags=["Query"])
 
@@ -30,7 +31,7 @@ def is_rate_limit_error(exc: Exception) -> bool:
     text = str(exc).lower()
     return "429" in text or "rate limit" in text or "rate_limit" in text
 
-def run_graph_task(task_id: str, question: str):
+def run_graph_task(task_id: str, question: str, user_id: int):
     task_status[task_id] = {
         "current_step": "starting",
         "completed_steps": [],
@@ -45,7 +46,8 @@ def run_graph_task(task_id: str, question: str):
         "error": None,
         "token_usage": None,
     }
-    state = {"query": question, "attempts": 0}
+    history_text = format_history(user_id)
+    state = {"query": question, "attempts": 0, "history_text": history_text}
     tracker = TokenUsageTracker()
     config = {"callbacks": [tracker]}
     try:
@@ -58,14 +60,19 @@ def run_graph_task(task_id: str, question: str):
             task_status[task_id]["question_type"] = state.get("question_type")
 
         usage = tracker.summary()
+        final_answer = state.get("final_answer")
+
         task_status[task_id]["done"] = True
         task_status[task_id]["current_step"] = None
         task_status[task_id]["search_query"] = state.get("search_query")
         task_status[task_id]["retrieved_docs"] = state.get("retrieved_docs")
-        task_status[task_id]["answer"] = state.get("final_answer")
+        task_status[task_id]["answer"] = final_answer
         task_status[task_id]["evaluation"] = state.get("evaluation")
         task_status[task_id]["attempts"] = state.get("attempts")
         task_status[task_id]["token_usage"] = usage
+
+        if final_answer and state.get("question_type") != "AMBIGUOUS":
+            add_turn(user_id, question, final_answer)
 
         usage_totals["total_queries"] += 1
         usage_totals["total_llm_calls"] += usage["llm_calls"]
@@ -85,7 +92,10 @@ def run_query(
     request: QueryRequest,
     current_user: User = Depends(get_current_user)
 ):
-    result = graph.invoke({"query": request.question, "attempts": 0})
+    history_text = format_history(current_user.id)
+    result = graph.invoke({"query": request.question, "attempts": 0, "history_text": history_text})
+    if result.get("final_answer"):
+        add_turn(current_user.id, request.question, result["final_answer"])
     return {
         "answer": result["final_answer"],
         "evaluation": result["evaluation"],
@@ -99,8 +109,13 @@ def start_query(
     current_user: User = Depends(get_current_user)
 ):
     task_id = str(uuid.uuid4())
-    background_tasks.add_task(run_graph_task, task_id, request.question)
+    background_tasks.add_task(run_graph_task, task_id, request.question, current_user.id)
     return {"task_id": task_id}
+
+@router.post("/clear-memory")
+def clear_memory(current_user: User = Depends(get_current_user)):
+    clear_history(current_user.id)
+    return {"detail": "Conversation memory cleared"}
 
 @router.get("/status/{task_id}")
 def get_query_status(

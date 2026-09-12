@@ -9,6 +9,8 @@ from nodes import (
 
 class GraphState(TypedDict):
     query: str
+    history_text: Optional[str]
+    resolved_query: Optional[str]
     question_type: Optional[str]
     search_query: Optional[str]
     retrieved_docs: Optional[list]
@@ -42,7 +44,6 @@ builder.add_conditional_edges(
     }
 )
 
-# Simple path: retrieval -> summarizer -> evaluator, with retry
 builder.add_edge("retrieval", "summarizer")
 builder.add_edge("summarizer", "evaluator")
 builder.add_conditional_edges(
@@ -54,31 +55,20 @@ builder.add_conditional_edges(
     }
 )
 
-# Complex path: multi-hop -> synthesize
 builder.add_edge("multi_hop", "synthesize")
 builder.add_edge("synthesize", END)
 
-# Compute path: straight to END after execution
 builder.add_edge("compute", END)
 
 graph = builder.compile()
 
 if __name__ == "__main__":
-    print("=== SIMPLE ===")
-    result = graph.invoke({"query": "What is RAG?", "attempts": 0})
-    print(result.get("final_answer"))
+    print("=== Turn 1 ===")
+    result1 = graph.invoke({"query": "What is RAG?", "attempts": 0, "history_text": "(no prior conversation)"})
+    print(result1.get("final_answer"))
 
-    print("\n=== COMPLEX ===")
-    result = graph.invoke({
-        "query": "Compare SQL comparison operators with logical operators and explain when you would use BETWEEN vs a nested subquery",
-        "attempts": 0
-    })
-    print(result.get("final_answer"))
-
-    print("\n=== AMBIGUOUS ===")
-    result = graph.invoke({"query": "tell me about it", "attempts": 0})
-    print(result.get("final_answer"))
-
-    print("\n=== COMPUTE ===")
-    result = graph.invoke({"query": "How many documents do I have?", "attempts": 0})
-    print(result.get("final_answer"))
+    print("\n=== Turn 2 (follow-up) ===")
+    history = f"Q: What is RAG?\nA: {result1.get('final_answer')}"
+    result2 = graph.invoke({"query": "explain that in more detail", "attempts": 0, "history_text": history})
+    print("Resolved:", result2.get("resolved_query"))
+    print(result2.get("final_answer"))
