@@ -2,7 +2,7 @@
 
 OmniRAG is a full-stack Retrieval-Augmented Generation (RAG) platform that lets users upload documents, ask questions about them, and get grounded, evaluated answers - with live visualization of the AI's reasoning steps and downloadable PDF reports.
 
-Built as a 5th-semester mini project / TechXpo submission.
+Built as a 5th-semester mini project.
 
 ## Features
 
