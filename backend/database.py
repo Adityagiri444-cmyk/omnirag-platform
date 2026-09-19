@@ -1,9 +1,16 @@
+import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# Database URL - now using PostgreSQL
-DATABASE_URL = "postgresql://postgres:Aditya%4065@localhost:5432/omnirag_db"
+load_dotenv()
+
+# Database URL - read from .env, never hardcoded here. This used to have the
+# actual PostgreSQL password committed directly in this file, which meant it
+# would be exposed to anyone with the code (including via git/GitHub), and
+# would only work on the one machine with that exact username/password.
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
 

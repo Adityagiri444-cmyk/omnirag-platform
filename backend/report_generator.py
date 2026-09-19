@@ -39,15 +39,28 @@ def _parse_markdown_table_lines(table_lines: list) -> list:
         rows.append(cells)
     return rows
 
-def _rows_to_reportlab_table(rows: list, body_style) -> Table:
-    """Turn parsed row data into an actual ReportLab Table (not flattened text)."""
+# Usable content width at letter size with this app's default 1in side
+# margins (8.5in page - 2*1in margins = 6.5in).
+PAGE_CONTENT_WIDTH = 6.5 * inch
+
+def _rows_to_reportlab_table(rows: list, body_style, available_width=PAGE_CONTENT_WIDTH) -> Table:
+    """
+    Turn parsed row data into an actual ReportLab Table. Column widths are
+    divided evenly across available_width explicitly, instead of left to
+    ReportLab's auto-sizing — auto-sizing can compute a negative available
+    width and crash doc.build() outright on a table with many columns or
+    long unbreakable content (this happened with an 18-column table from a
+    misdetected PDF form). table_extractor.py now filters tables that wide
+    out at the source, but this stays as a defensive backstop regardless.
+    """
     max_cols = max(len(r) for r in rows)
     rows = [r + [""] * (max_cols - len(r)) for r in rows]
+    col_width = available_width / max_cols
     wrapped_rows = [
         [Paragraph(_inline_markdown_to_html(cell), body_style) for cell in row]
         for row in rows
     ]
-    t = Table(wrapped_rows, hAlign="LEFT")
+    t = Table(wrapped_rows, colWidths=[col_width] * max_cols, hAlign="LEFT")
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EDEFFB")),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CCCCCC")),
@@ -184,7 +197,12 @@ def generate_query_report(task_data: dict) -> io.BytesIO:
             # chunk is a dict: {"content", "chunk_type", "source"} — see retriever.py
             content = chunk.get("content", "")
             chunk_type = chunk.get("chunk_type", "text")
-            label = "Table" if chunk_type == "table" else "Passage"
+            if chunk_type == "table":
+                label = "Table"
+            elif chunk_type == "image":
+                label = "Image"
+            else:
+                label = "Passage"
 
             elements.append(Paragraph(f"<b>{label} {i}:</b>", body_style))
             if chunk_type == "table":

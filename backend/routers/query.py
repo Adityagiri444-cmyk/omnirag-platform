@@ -56,6 +56,8 @@ def run_graph_task(task_id: str, question: str, user_id: int):
         task_status[task_id]["current_step"] = None
         task_status[task_id]["completed_steps"] = ["cache"]
         task_status[task_id]["question_type"] = cached["question_type"]
+        task_status[task_id]["search_query"] = cached.get("search_query")
+        task_status[task_id]["retrieved_docs"] = cached.get("retrieved_docs")
         task_status[task_id]["answer"] = cached["answer"]
         task_status[task_id]["evaluation"] = cached["evaluation"]
         task_status[task_id]["attempts"] = 0
@@ -94,7 +96,11 @@ def run_graph_task(task_id: str, question: str, user_id: int):
 
         if final_answer and question_type != "AMBIGUOUS":
             add_turn(user_id, question, final_answer)
-            add_to_cache(question, final_answer, question_type, evaluation)
+            add_to_cache(
+                question, final_answer, question_type, evaluation,
+                retrieved_docs=state.get("retrieved_docs"),
+                search_query=state.get("search_query"),
+            )
 
         usage_totals["total_queries"] += 1
         usage_totals["total_llm_calls"] += usage["llm_calls"]
@@ -127,7 +133,11 @@ def run_query(
     result = graph.invoke({"query": request.question, "attempts": 0, "history_text": history_text})
     if result.get("final_answer"):
         add_turn(current_user.id, request.question, result["final_answer"])
-        add_to_cache(request.question, result["final_answer"], result.get("question_type"), result.get("evaluation"))
+        add_to_cache(
+            request.question, result["final_answer"], result.get("question_type"), result.get("evaluation"),
+            retrieved_docs=result.get("retrieved_docs"),
+            search_query=result.get("search_query"),
+        )
     return {
         "answer": result["final_answer"],
         "evaluation": result["evaluation"],

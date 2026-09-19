@@ -9,20 +9,21 @@ Built as a 5th-semester mini project / TechXpo submission.
 - **Authenticated document management** - upload, list, delete, and summarize PDF documents per user, with admin/user role separation
 - **Multi-agent RAG pipeline** (LangGraph): Coordinator -> (Planner/Decompose/Clarify) -> Retrieval -> Summarizer/Synthesize -> Evaluator, with automatic retry on ungrounded answers
 - **Query decomposition** - complex, multi-part questions are automatically broken into sub-questions, answered independently, and synthesized into one coherent answer
-- **Hierarchical retrieval** - a two-stage RAPTOR-inspired search: document-level summaries narrow down to the right document first, then chunk-level search finds precise passages within it
+- **Hierarchical retrieval** - a two-stage RAPTOR-inspired search: document-level summaries (auto-generated the moment a document is uploaded) narrow down to the right document first, then chunk-level search finds precise passages within it
+- **Multimodal document understanding** - tables are extracted and preserved as structured Markdown (not flattened into garbled text), and text embedded in images - screenshots, scanned pages, diagrams - is extracted via OCR, so both become fully searchable and retrievable alongside regular text
 - **Real-time agent visualization** - live progress tracking as each pipeline step runs, shown as an animated status bar in the chat UI
 - **Chat interface** - full conversation history, not just single Q&A
-- **Downloadable PDF reports** - every answer can be exported as a structured report (question, search query, retrieved context, answer, evaluation)
+- **Downloadable PDF reports** - every answer can be exported as a structured report (question, search query, retrieved context, answer, evaluation), with retrieved tables rendered as real formatted tables rather than flattened text
 - **Document summarization** - one-click AI summary of any uploaded document
 - **Analytics dashboard** - upload trends and document counts, visualized with charts
 
 ## Tech Stack
 
-- **Backend**: FastAPI, SQLAlchemy, SQLite, JWT auth (python-jose), bcrypt
+- **Backend**: FastAPI, SQLAlchemy, PostgreSQL, JWT auth (python-jose), bcrypt
 - **Frontend**: React, Tailwind CSS, Recharts
 - **AI/Orchestration**: LangChain, LangGraph, Groq (free-tier LLM API), HuggingFace sentence-transformers (local embeddings, no API cost)
 - **Vector Store**: ChromaDB (local, persistent - two collections: chunk-level and document-summary-level)
-- **PDF Processing**: pypdf (extraction), ReportLab (report generation)
+- **PDF Processing**: pypdf (text extraction), pdfplumber (table extraction), PyMuPDF + Tesseract OCR (image and scanned-page text extraction), ReportLab (report generation)
 
 ## Architecture
 User Question
@@ -67,6 +68,16 @@ Final Answer
 - **Evaluator** - checks whether an answer is actually grounded in the retrieved context, retrying if not, up to 2 attempts *(Self-RAG, 2024 - self-reflection and self-critique loops)*
 - **Orchestration** - the entire multi-path graph, with conditional branching and cycles, is built on LangGraph *(LangChain Ecosystem - stateful multi-agent workflow orchestration)*
 
+### Multimodal ingestion pipeline
+
+Documents aren't extracted as flat text alone - three distinct chunk types are recognized, tagged, and handled differently throughout retrieval and reporting:
+
+- **Text** - standard prose, chunked with LangChain's RecursiveCharacterTextSplitter
+- **Tables** - detected and extracted via pdfplumber, converted to Markdown, and kept intact as a single chunk (never split across chunk boundaries) so row/column structure survives. A quality filter discards pdfplumber's occasional false positives, such as a PDF form's bordered field boxes being misdetected as one large table
+- **Images** - embedded images and genuinely scanned pages (detected by checking for an empty text layer, not just the absence of embedded images) are OCR'd via PyMuPDF + Tesseract, so text inside screenshots, logos, and scanned documents becomes searchable too
+
+Retrieved table content is preserved verbatim rather than paraphrased by the LLM, and renders as a real formatted table - not flattened pipe-delimited text - in both chat answers and downloaded PDF reports.
+
 ## Setup
 
 ### Backend
@@ -77,9 +88,17 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+**Also install Tesseract OCR** - a separate system program, not just a Python package - so image and scanned-page text extraction works:
+- Windows: download and run the installer from the [UB Mannheim Tesseract build](https://github.com/UB-Mannheim/tesseract/wiki), keeping the default install location (`C:\Program Files\Tesseract-OCR\`)
+- macOS: `brew install tesseract`
+- Linux: `sudo apt install tesseract-ocr`
+
+> `requirements.txt` should include `pdfplumber`, `pymupdf`, `pytesseract`, and `Pillow` for the multimodal pipeline - confirm these are present before running `pip install`.
+
 Create a `.env` file in `backend/` with:
 GROQ_API_KEY=your_groq_api_key_here
-(Get a free key at console.groq.com)
+DATABASE_URL=postgresql://your_pg_username:your_pg_password@localhost:5432/omnirag_db
+(Get a free Groq key at console.groq.com. Requires a local PostgreSQL server installed separately - the `omnirag_db` database itself needs to be created once, e.g. `createdb omnirag_db`, before the backend can connect to it.)
 
 Run the server:
 ```bash
@@ -98,13 +117,13 @@ Opens at `http://localhost:3000`.
 ## Usage
 
 1. Register/log in
-2. Upload PDF documents via "My Documents"
+2. Upload PDF documents via "My Documents" - tables and images inside them are automatically extracted and indexed alongside the plain text, no extra steps needed
 3. Ask questions in "Ask OmniRAG" - watch the live agent progress bar as it retrieves, generates, and evaluates the answer
-4. Try a complex, multi-part question to see decomposition in action, or a vague one to see the system ask for clarification
+4. Try a complex, multi-part question to see decomposition in action, a vague one to see the system ask for clarification, or a question about a table or scanned image in one of your documents to see multimodal retrieval at work
 5. Download a PDF report of any answer, or generate a one-paragraph summary of any document
 
 ## Team
 
-- **Aditya Giri** - Platform Development, Workflow Orchestration, Knowledge Services (FastAPI backend, React frontend, LangGraph orchestration, retrieval engine, query decomposition, hierarchical retrieval)
+- **Aditya Giri** - Platform Development, Workflow Orchestration, Knowledge Services (FastAPI backend, React frontend, LangGraph orchestration, retrieval engine, query decomposition, hierarchical retrieval, multimodal table/image extraction)
 - **Aryan Patel** - Multi-agent reasoning
 - **Pranjal Agarwal** - Document intelligence (retrieval)

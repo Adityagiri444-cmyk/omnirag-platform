@@ -116,7 +116,7 @@ def node_multi_hop(state: dict) -> dict:
     collected_tables = []
     collected_docs = []
     for sub_q in state["sub_questions"]:
-        docs = hierarchical_retrieve(sub_q, k_docs=2, k_chunks=2)
+        docs = hierarchical_retrieve(sub_q, k_docs=2, k_chunks=6)
         context = format_context(docs)
         answer = summarizer_chain.invoke({"context": context, "question": sub_q})
         sub_answers.append({"question": sub_q, "answer": answer})
@@ -152,7 +152,13 @@ def node_synthesize(state: dict) -> dict:
 
 summarizer_prompt = PromptTemplate.from_template(
     "Answer the question using only the context below. "
-    "If the context doesn't contain the answer, say so.\n\n"
+    "If the context doesn't contain the answer, say so. "
+    "If the context includes findings attributed to other sources (e.g., "
+    "cited studies, prior research, or comparisons to other work — often "
+    "marked by reference numbers or phrases like 'a previous study found'), "
+    "clearly distinguish those from the main document's own reported "
+    "findings, and prioritize the main document's own conclusion when it "
+    "directly answers the question.\n\n"
     "Context:\n{context}\n\n"
     "Question: {question}\n\n"
     "Answer:"

@@ -9,7 +9,7 @@ from database import get_db
 from models import User, Document
 from schemas import DocumentResponse
 from dependencies import get_current_user
-from retriever import add_document_to_index, add_summary_to_index
+from retriever import add_document_to_index, add_summary_to_index, vectorstore, summary_vectorstore
 from nodes import summarize_document
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -132,6 +132,17 @@ def delete_document(
     # Delete the physical file from disk
     if os.path.exists(document.filepath):
         os.remove(document.filepath)
+
+    # Also remove this document's chunks and its hierarchical-retrieval summary
+    # from the vector stores. Previously only the SQL row and the on-disk file
+    # were removed, so a "deleted" document's chunks and summary stayed in
+    # chroma_db/chroma_summaries_db forever - still able to influence retrieval
+    # and document-routing for completely unrelated future questions.
+    try:
+        vectorstore._collection.delete(where={"source": document.filename})
+        summary_vectorstore._collection.delete(where={"source": document.filename})
+    except Exception as e:
+        print(f"Warning: failed to remove {document.filename} from vector stores: {e}")
 
     db.delete(document)
     db.commit()

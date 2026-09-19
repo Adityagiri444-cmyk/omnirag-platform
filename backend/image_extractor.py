@@ -31,6 +31,11 @@ if platform.system() == "Windows":
 # Ignore OCR results shorter than this.
 MIN_OCR_TEXT_LENGTH = 20
 
+# A page with fewer extractable text characters than this is treated as
+# having no real text layer - i.e. a genuine scan, not a normal digital
+# page that simply happens to contain no embedded raster images.
+MIN_PAGE_TEXT_LENGTH = 20
+
 # Resolution used when rendering scanned PDF pages.
 # 200 DPI is a reasonable balance between OCR quality and speed.
 SCAN_DPI = 200
@@ -46,7 +51,15 @@ def extract_images_from_pdf(filepath: str, source_label: str) -> list:
     Extract OCR text from:
 
     1. Embedded images inside a PDF.
-    2. Scanned PDF pages.
+    2. Scanned PDF pages (pages with no extractable text layer at all).
+
+    A page is only treated as "scanned" - and rendered + OCR'd in full -
+    if it has both no embedded images AND no extractable text via
+    page.get_text(). Checking only for embedded images was wrong: a
+    completely normal digital text page (no photos/figures on it) also
+    has zero embedded images, so that condition alone was triggering a
+    full-page render+OCR pass on every plain text page in every PDF -
+    redundant with pypdf's own clean text extraction, and much slower.
 
     Returns LangChain Document objects with:
         chunk_type="image"
@@ -123,10 +136,17 @@ def extract_images_from_pdf(filepath: str, source_label: str) -> list:
             # 2. OCR SCANNED PDF PAGE
             # ---------------------------------------------------------
             #
-            # If the page contains no embedded images, it may be a
-            # scanned page. Render the entire page and OCR it.
+            # Only if the page has no embedded images AND no real text
+            # layer - that combination is what actually means "this page
+            # is a scan", not just "no embedded images".
             #
-            if not embedded_images:
+            page_text_length = len(page.get_text().strip())
+            is_scanned_page = (
+                not embedded_images
+                and page_text_length < MIN_PAGE_TEXT_LENGTH
+            )
+
+            if is_scanned_page:
 
                 try:
                     zoom = SCAN_DPI / 72

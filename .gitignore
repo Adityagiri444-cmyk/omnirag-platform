@@ -10,3 +10,4 @@ chroma_query_cache_db/
 .vscode/
 backend/uploads/
 backend/test_research_output.pdf
+node_modules/
